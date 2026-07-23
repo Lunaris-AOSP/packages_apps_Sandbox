@@ -151,6 +151,7 @@ data class AppInfo(
     val uid: Int,
     val isLocked: Boolean,
     val isHidden: Boolean,
+    val isLauncherHidden: Boolean,
     val isSandboxed: Boolean,
     val isSystem: Boolean = false
 )
@@ -186,6 +187,7 @@ fun SandboxApp(
             appsState.value.map { entry ->
                 val isLocked = try { sandboxManager?.getAppLockState(entry.packageName)?.hasAppLock() ?: false } catch (e: Exception) { false }
                 val isHidden = try { sandboxManager?.isPackageHidden(entry.packageName) ?: false } catch (e: Exception) { false }
+                val isLauncherHidden = try { sandboxManager?.isPackageHiddenFromLauncher(entry.packageName) ?: false } catch (e: Exception) { false }
                 val isSandboxed = try { sandboxManager?.isPackageSandboxed(entry.packageName) ?: false } catch (e: Exception) { false }
 
                 AppInfo(
@@ -195,6 +197,7 @@ fun SandboxApp(
                     uid = 0,
                     isLocked = isLocked,
                     isHidden = isHidden,
+                    isLauncherHidden = isLauncherHidden,
                     isSandboxed = isSandboxed,
                     isSystem = entry.isSystem
                 )
@@ -300,7 +303,27 @@ fun SandboxApp(
             },
             onHideToggle = { app ->
                 scope.launch {
-                    toggleAppHidden(context, app.packageName, !app.isHidden)
+                    val nextHideState = !app.isHidden
+                    toggleAppHidden(context, app.packageName, nextHideState)
+                    if (nextHideState) {
+                        toggleAppLauncherHidden(context, app.packageName, false)
+                        selectedApp = app.copy(isHidden = true, isLauncherHidden = false)
+                    } else {
+                        selectedApp = app.copy(isHidden = false)
+                    }
+                    reloadApps()
+                }
+            },
+            onLauncherHideToggle = { app ->
+                scope.launch {
+                    val nextLauncherHideState = !app.isLauncherHidden
+                    toggleAppLauncherHidden(context, app.packageName, nextLauncherHideState)
+                    if (nextLauncherHideState) {
+                        toggleAppHidden(context, app.packageName, false)
+                        selectedApp = app.copy(isLauncherHidden = true, isHidden = false)
+                    } else {
+                        selectedApp = app.copy(isLauncherHidden = false)
+                    }
                     reloadApps()
                 }
             },
@@ -708,6 +731,41 @@ private fun SpoofSettingsDropdown(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun HideSettingsDropdown(
+    app: AppInfo,
+    onHideToggle: (AppInfo) -> Unit,
+    onLauncherHideToggle: (AppInfo) -> Unit
+) {
+    val expanded = remember(app.packageName) { app.isHidden || app.isLauncherHidden }
+
+    PreferenceGroup(
+        title = stringResource(R.string.hide_settings_title),
+        collapsible = true,
+        initiallyExpanded = expanded,
+    ) {
+        item {
+            SwitchPreference(
+                title = stringResource(R.string.hide_app_title),
+                summary = if (app.isHidden) stringResource(R.string.hide_app_description_on)
+                else stringResource(R.string.hide_app_description_off),
+                checked = app.isHidden,
+                onCheckedChange = { onHideToggle(app) },
+            )
+        }
+        item {
+            SwitchPreference(
+                title = stringResource(R.string.hide_from_launcher_title),
+                summary = if (app.isLauncherHidden) stringResource(R.string.hide_from_launcher_description_on)
+                else stringResource(R.string.hide_from_launcher_description_off),
+                checked = app.isLauncherHidden,
+                onCheckedChange = { onLauncherHideToggle(app) },
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppDetailScreen(
@@ -715,6 +773,7 @@ fun AppDetailScreen(
     onBackClick: () -> Unit,
     onLockToggle: (AppInfo) -> Unit,
     onHideToggle: (AppInfo) -> Unit,
+    onLauncherHideToggle: (AppInfo) -> Unit,
     onSandboxToggle: (AppInfo) -> Unit,
     onLaunch: (AppInfo) -> Unit,
     isSecuritySetup: Boolean = false
@@ -794,15 +853,10 @@ fun AppDetailScreen(
                 }
 
                 item {
-                    SettingsCard(
-                        icon = Icons.Outlined.VisibilityOff,
-                        activeIcon = Icons.Filled.VisibilityOff,
-                        title = stringResource(R.string.hide_app_title),
-                        description = if (app.isHidden) stringResource(R.string.hide_app_description_on)
-                        else stringResource(R.string.hide_app_description_off),
-                        isEnabled = app.isHidden,
-                        onToggle = { onHideToggle(app) },
-                        accentColor = MaterialTheme.colorScheme.tertiary
+                    HideSettingsDropdown(
+                        app = app,
+                        onHideToggle = onHideToggle,
+                        onLauncherHideToggle = onLauncherHideToggle
                     )
                 }
             }
@@ -953,8 +1007,27 @@ fun AppsTab(
 
     val onHideToggle: (AppInfo) -> Unit = { app ->
         scope.launch {
-            toggleAppHidden(context, app.packageName, !app.isHidden)
-            selectedApp = app.copy(isHidden = !app.isHidden)
+            val nextHideState = !app.isHidden
+            toggleAppHidden(context, app.packageName, nextHideState)
+            if (nextHideState) {
+                toggleAppLauncherHidden(context, app.packageName, false)
+                selectedApp = app.copy(isHidden = true, isLauncherHidden = false)
+            } else {
+                selectedApp = app.copy(isHidden = false)
+            }
+        }
+    }
+
+    val onLauncherHideToggle: (AppInfo) -> Unit = { app ->
+        scope.launch {
+            val nextLauncherHideState = !app.isLauncherHidden
+            toggleAppLauncherHidden(context, app.packageName, nextLauncherHideState)
+            if (nextLauncherHideState) {
+                toggleAppHidden(context, app.packageName, false)
+                selectedApp = app.copy(isLauncherHidden = true, isHidden = false)
+            } else {
+                selectedApp = app.copy(isLauncherHidden = false)
+            }
         }
     }
 
@@ -979,6 +1052,7 @@ fun AppsTab(
                 app = selectedApp!!,
                 onLockToggle = onLockToggle,
                 onHideToggle = onHideToggle,
+                onLauncherHideToggle = onLauncherHideToggle,
                 onSandboxToggle = onSandboxToggle,
                 onLaunch = { app -> launchApp(context, app.packageName) },
                 onDismiss = onSheetDismiss,
@@ -1435,6 +1509,7 @@ private fun AppQuickActionsSheet(
     app: AppInfo,
     onLockToggle: (AppInfo) -> Unit,
     onHideToggle: (AppInfo) -> Unit,
+    onLauncherHideToggle: (AppInfo) -> Unit,
     onSandboxToggle: (AppInfo) -> Unit,
     onLaunch: (AppInfo) -> Unit,
     onDismiss: () -> Unit
@@ -1509,17 +1584,16 @@ private fun AppQuickActionsSheet(
                             icon = if (app.isLocked) Icons.Filled.Lock else Icons.Outlined.Lock,
                         )
                     }
-                    item {
-                        SwitchPreference(
-                            title = stringResource(R.string.action_hide),
-                            checked = app.isHidden,
-                            onCheckedChange = { onHideToggle(app) },
-                            icon = if (app.isHidden) Icons.Filled.VisibilityOff
-                                else Icons.Outlined.VisibilityOff,
-                        )
-                    }
                 }
             }
+
+        item {
+            HideSettingsDropdown(
+                app = app,
+                onHideToggle = onHideToggle,
+                onLauncherHideToggle = onLauncherHideToggle
+            )
+        }
 
             item {
                 SandboxOptionsDropdown(
@@ -1883,6 +1957,15 @@ private suspend fun toggleAppHidden(context: Context, packageName: String, hidde
         sandboxManager.setPackageHidden(packageName, hidden)
     } catch (e: Exception) {
         Log.e(TAG, "Error toggling app hidden for $packageName", e)
+    }
+}
+
+private suspend fun toggleAppLauncherHidden(context: Context, packageName: String, hidden: Boolean) = withContext(Dispatchers.IO) {
+    try {
+        val sandboxManager = context.getSystemService(Context.AX_SANDBOX_SERVICE) as? android.app.AxSandboxManager ?: return@withContext
+        sandboxManager.setPackageHiddenFromLauncher(packageName, hidden)
+    } catch (e: Exception) {
+        Log.e(TAG, "Error toggling app launcher hidden for $packageName", e)
     }
 }
 
