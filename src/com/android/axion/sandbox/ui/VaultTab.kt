@@ -21,10 +21,13 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
@@ -108,6 +111,7 @@ fun VaultTab(
     
     var isProcessing by remember { mutableStateOf(false) }
     var processingMessage by remember { mutableStateOf("") }
+    var restoredPopupMessage by remember { mutableStateOf<String?>(null) }
 
     fun toggleSelection(id: String) {
         selectedFiles = if (selectedFiles.contains(id)) selectedFiles - id else selectedFiles + id
@@ -140,7 +144,20 @@ fun VaultTab(
         scope.launch(Dispatchers.IO) {
             try {
                 val toRestore = files.filter { selectedFiles.contains(it.id) }
-                vaultManager.restoreFiles(toRestore)
+                val count = vaultManager.restoreFiles(toRestore)
+                withContext(Dispatchers.Main) {
+                    if (count == 1) {
+                        val file = toRestore.first()
+                        val path = if (!file.originalPath.isNullOrEmpty()) {
+                            file.originalPath
+                        } else {
+                            "Downloads/Vault_Restored/" + file.name
+                        }
+                        restoredPopupMessage = "Restored to: $path"
+                    } else if (count > 1) {
+                        restoredPopupMessage = "$count files successfully restored!"
+                    }
+                }
             } finally {
                 withContext(Dispatchers.Main) {
                     isProcessing = false
@@ -177,8 +194,9 @@ fun VaultTab(
     val images = remember(files) { files.filter { it.mimeType.startsWith("image/") } }
     val otherFiles = remember(files) { files.filter { !it.mimeType.startsWith("image/") && !it.mimeType.startsWith("video/") } }
 
-    Scaffold(
-        floatingActionButton = {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            floatingActionButton = {
             if (!isMultiSelectMode) {
                 ExtendedFloatingActionButton(
                     onClick = { 
@@ -304,6 +322,38 @@ fun VaultTab(
                 }
             }
         }
+    }
+
+    restoredPopupMessage?.let { msg ->
+        LaunchedEffect(msg) {
+            delay(4000)
+            restoredPopupMessage = null
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 32.dp, start = 16.dp, end = 16.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .wrapContentSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.inverseOnSurface.copy(alpha = 0.95f))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .animateContentSize()
+            ) {
+                Text(
+                    text = msg,
+                    color = MaterialTheme.colorScheme.inverseSurface,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
     }
 }
 
