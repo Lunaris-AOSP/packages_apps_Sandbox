@@ -84,16 +84,16 @@ class BackupManager(private val context: Context) {
 
                         val isolation = sandboxManager.isSandboxDataIsolationEnabled(packageName, userId)
                         appObj.put("dataIsolation", isolation)
+                    }
 
-                        val spoofObj = JSONObject()
-                        for (key in SPOOF_KEYS) {
-                            if (sandboxManager.isSpoofSettingEnabled(packageName, key, userId)) {
-                                spoofObj.put(key, true)
-                            }
+                    val spoofObj = JSONObject()
+                    for (key in SPOOF_KEYS) {
+                        if (sandboxManager.isSpoofSettingEnabled(packageName, key, userId)) {
+                            spoofObj.put(key, true)
                         }
-                        if (spoofObj.length() > 0) {
-                            appObj.put("spoofSettings", spoofObj)
-                        }
+                    }
+                    if (spoofObj.length() > 0) {
+                        appObj.put("spoofSettings", spoofObj)
                     }
                     appsArray.put(appObj)
                 }
@@ -135,10 +135,11 @@ class BackupManager(private val context: Context) {
                 try {
                     val appObj = appsArray.getJSONObject(i)
                     val packageName = appObj.getString("packageName")
+                    val userId = appObj.optInt("userId", 0)
                     
                     // Skip if the package is not installed on this device
                     try {
-                        pm.getPackageInfo(packageName, 0)
+                        pm.getPackageInfoAsUser(packageName, 0, userId)
                     } catch (e: Exception) {
                         Log.w(TAG, "Skipping config for uninstalled package: $packageName")
                         continue
@@ -147,8 +148,6 @@ class BackupManager(private val context: Context) {
                     val isLocked = appObj.optBoolean("isLocked", false)
                     val isHidden = appObj.optBoolean("isHidden", false)
                     val isSandboxed = appObj.optBoolean("isSandboxed", false)
-
-                    val userId = appObj.optInt("userId", 0)
 
                     if (isLocked) {
                         sandboxManager.addLockedApp(packageName, userId)
@@ -174,14 +173,14 @@ class BackupManager(private val context: Context) {
 
                         val isolation = appObj.optBoolean("dataIsolation", false)
                         sandboxManager.setSandboxDataIsolationEnabled(packageName, isolation, userId)
-
-                        val spoofObj = appObj.optJSONObject("spoofSettings")
-                        for (key in SPOOF_KEYS) {
-                            val enabled = spoofObj?.optBoolean(key, false) ?: false
-                            sandboxManager.setSpoofSettingEnabled(packageName, key, enabled, userId)
-                        }
                     } else {
                         sandboxManager.removeSandboxedPackage(packageName, userId)
+                    }
+
+                    val spoofObj = appObj.optJSONObject("spoofSettings")
+                    for (key in SPOOF_KEYS) {
+                        val enabled = spoofObj?.optBoolean(key, false) ?: false
+                        sandboxManager.setSpoofSettingEnabled(packageName, key, enabled, userId)
                     }
                 } catch (e: Throwable) {
                     Log.e(TAG, "Error importing config for an app entry", e)

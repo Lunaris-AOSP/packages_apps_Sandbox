@@ -887,7 +887,32 @@ private fun SpoofSettingsDropdown(
         }
     }
 
-    val hasAnyEnabled by remember { derivedStateOf { enabledSettings.values.any { it } } }
+    var updating by remember(app.packageName, app.userId) { mutableStateOf(false) }
+
+    fun updateSettings(stateKey: String, keys: List<String>, value: Boolean) {
+        if (updating) return
+        updating = true
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        keys.forEach { key ->
+                            sandboxManager.setSpoofSettingEnabled(
+                                    app.packageName, key, value, app.userId)
+                        }
+                        sandboxManager.getEnabledSpoofSettings(app.packageName, app.userId)
+                    }
+                }
+                result.onSuccess { settings ->
+                    enabledSettings[stateKey] = keys.all { it in settings }
+                }.onFailure { error ->
+                    Log.e(TAG, "Failed to update spoof settings for ${app.packageName}", error)
+                }
+            } finally {
+                updating = false
+            }
+        }
+    }
 
     PreferenceGroup(
         title = stringResource(R.string.spoof_settings_title),
@@ -901,13 +926,9 @@ private fun SpoofSettingsDropdown(
                     title = stringResource(entry.titleRes),
                     summary = stringResource(entry.descriptionRes),
                     checked = isEnabled,
-                    onCheckedChange = {
-                        val newValue = !isEnabled
-                        enabledSettings[entry.key] = newValue
-                        scope.launch(Dispatchers.IO) {
-                            sandboxManager.setSpoofSettingEnabled(
-                                    app.packageName, entry.key, newValue, app.userId)
-                        }
+                    enabled = !updating,
+                    onCheckedChange = { value ->
+                        updateSettings(entry.key, listOf(entry.key), value)
                     },
                 )
             }
@@ -918,15 +939,9 @@ private fun SpoofSettingsDropdown(
                 title = stringResource(R.string.spoof_accessibility),
                 summary = stringResource(R.string.spoof_accessibility_description),
                 checked = accessibilityEnabled,
-                onCheckedChange = {
-                    val newValue = !accessibilityEnabled
-                    enabledSettings["accessibility_spoof"] = newValue
-                    scope.launch(Dispatchers.IO) {
-                        SPOOF_ACCESSIBILITY_KEYS.forEach { key ->
-                            sandboxManager.setSpoofSettingEnabled(
-                                    app.packageName, key, newValue, app.userId)
-                        }
-                    }
+                enabled = !updating,
+                onCheckedChange = { value ->
+                    updateSettings("accessibility_spoof", SPOOF_ACCESSIBILITY_KEYS, value)
                 },
             )
         }
