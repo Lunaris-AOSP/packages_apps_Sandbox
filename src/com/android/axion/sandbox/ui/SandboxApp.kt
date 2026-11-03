@@ -250,13 +250,14 @@ fun SandboxApp(
     val density = LocalDensity.current
     val iconTargetPx = remember(density) { with(density) { 52.dp.roundToPx() } }
 
-    val apps by produceState<List<AppInfo>>(initialValue = emptyList(), appsState.value, refreshKey) {
-        if (appsState.value.isEmpty()) {
+    val appEntries = appsState.value
+    val apps by produceState<List<AppInfo>>(initialValue = emptyList(), appEntries, refreshKey) {
+        if (appEntries.isEmpty()) {
             value = emptyList()
             return@produceState
         }
         withContext(Dispatchers.Default) {
-            val userPackagesMap = appsState.value
+            val userPackagesMap = appEntries
                 .map { it.userId }
                 .distinct()
                 .associateWith { userId -> sandboxManager.getUserPackages(userId) }
@@ -264,6 +265,8 @@ fun SandboxApp(
             val iconDrawableFactory = IconDrawableFactory.newInstance(context)
 
             suspend fun processEntries(entries: List<AppEntry>): List<AppInfo> = coroutineScope {
+                if (entries.isEmpty()) return@coroutineScope emptyList()
+
                 val parallelism = Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
                 val chunkSize = (entries.size + parallelism - 1) / parallelism
                 entries.chunked(chunkSize).map { chunk ->
@@ -296,7 +299,7 @@ fun SandboxApp(
                 }.awaitAll().flatten()
             }
 
-            val (regularEntries, systemEntries) = appsState.value.partition { !it.isSystem }
+            val (regularEntries, systemEntries) = appEntries.partition { !it.isSystem }
             val regularApps = processEntries(regularEntries)
             value = regularApps
 
