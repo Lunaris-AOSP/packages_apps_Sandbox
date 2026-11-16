@@ -207,20 +207,13 @@ class AuthenticateActivity : ComponentActivity() {
         }
         setResult(Activity.RESULT_CANCELED, resultIntent)
         failedTime = SystemClock.elapsedRealtime()
-        moveTaskToBack(true)
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        startActivity(homeIntent)
         finish()
     }
 
     override fun onPause() {
         super.onPause()
-        if (authState != AuthState.FINISHED) {
-            cancelAndFinish()
-        }
+        // Do not cancel here: the activity is paused by the screen turning off, the shade
+        // or a system dialog. Cancelling used to tear the target app down.
     }
 
     override fun onUserLeaveHint() {
