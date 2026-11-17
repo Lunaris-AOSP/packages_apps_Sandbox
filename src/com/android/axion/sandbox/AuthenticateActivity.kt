@@ -26,6 +26,7 @@ import android.os.CancellationSignal
 import android.os.PowerManager
 import android.os.SystemClock
 import android.os.UserHandle
+import android.view.Display
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -166,7 +167,13 @@ class AuthenticateActivity : ComponentActivity() {
 
     private fun setupWindowForOverlay() {
         window?.apply {
-            setType(WindowManager.LayoutParams.TYPE_STATUS_BAR_SUB_PANEL)
+            // TYPE_STATUS_BAR_SUB_PANEL makes the prompt float above the status bar on the
+            // default display. On a secondary display (a freeform window such as LMOFreeform's)
+            // there is no status bar and a system window type keeps the window from being laid
+            // out inside that display, so keep a regular activity window there.
+            if ((display?.displayId ?: Display.DEFAULT_DISPLAY) == Display.DEFAULT_DISPLAY) {
+                setType(WindowManager.LayoutParams.TYPE_STATUS_BAR_SUB_PANEL)
+            }
 
             addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
@@ -207,20 +214,13 @@ class AuthenticateActivity : ComponentActivity() {
         }
         setResult(Activity.RESULT_CANCELED, resultIntent)
         failedTime = SystemClock.elapsedRealtime()
-        moveTaskToBack(true)
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        startActivity(homeIntent)
         finish()
     }
 
     override fun onPause() {
         super.onPause()
-        if (authState != AuthState.FINISHED) {
-            cancelAndFinish()
-        }
+        // Do not cancel here: the activity is paused by the screen turning off, the shade
+        // or a system dialog. Cancelling used to tear the target app down.
     }
 
     override fun onUserLeaveHint() {
